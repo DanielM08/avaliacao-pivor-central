@@ -1,0 +1,671 @@
+openapi: 3.1.0
+info:
+  title: API Avaliação de Pivô Central
+  version: 1.0.0
+  description: |
+    API para registro e cálculo de avaliações de pivô central.
+
+    **Fase 1 (este contrato):** CRUD de avaliações + uniformidade.
+
+    Regras de negócio detalhadas em `docs/regras-negocio.md`.
+
+    Autenticação via header `X-API-Key` em todos os endpoints, exceto `/health`.
+
+servers:
+  - url: http://localhost:8000
+    description: Desenvolvimento local
+
+tags:
+  - name: health
+    description: Verificação de disponibilidade
+  - name: avaliacoes
+    description: Ciclo de vida da avaliação de campo
+  - name: uniformidade
+    description: Coletores e cálculos de uniformidade
+  - name: calculos
+    description: Endpoints stateless para validação e testes
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: API disponível
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+
+  /api/v1/avaliacoes:
+    get:
+      tags: [avaliacoes]
+      summary: Listar avaliações
+      operationId: listAvaliacoes
+      parameters:
+        - name: coordenada
+          in: query
+          required: false
+          description: Filtrar por `coordenada_key` normalizada (ex. `-10.5432,-46.4123`)
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AvaliacaoStatus"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Lista paginada de avaliações
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvaliacaoListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [avaliacoes]
+      summary: Criar avaliação
+      operationId: createAvaliacao
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAvaliacaoRequest"
+            example:
+              cadastro:
+                empresa: Proojet Agro Consultoria
+                proprietario: Fazenda Jalapão (exemplo)
+                fazenda: Jalapão
+                cidade: Mateiros
+                estado: TO
+                coordenadas: "-10.5432, -46.4123"
+                comp: 374
+                raio: 400
+                espacamento: 5
+                vazao: 351
+                vel: 250
+                pressao: 3.8
+                lamina_projeto: 6.5637
+                canhao: Sim
+      responses:
+        "201":
+          description: Avaliação criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvaliacaoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/avaliacoes/{avaliacao_id}:
+    parameters:
+      - $ref: "#/components/parameters/AvaliacaoId"
+
+    get:
+      tags: [avaliacoes]
+      summary: Obter avaliação por ID
+      operationId: getAvaliacao
+      responses:
+        "200":
+          description: Avaliação encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvaliacaoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [avaliacoes]
+      summary: Atualizar cadastro parcialmente
+      operationId: patchAvaliacao
+      description: |
+        Atualiza apenas os campos enviados em `cadastro`.
+        Recalcula `coordenada_key` quando `coordenadas` for alterado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchAvaliacaoRequest"
+            example:
+              cadastro:
+                lamina_projeto: 6.56
+      responses:
+        "200":
+          description: Avaliação atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvaliacaoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/avaliacoes/{avaliacao_id}/coletores:
+    parameters:
+      - $ref: "#/components/parameters/AvaliacaoId"
+
+    put:
+      tags: [uniformidade]
+      summary: Substituir lista de coletores
+      operationId: replaceColetores
+      description: Substitui integralmente os coletores da avaliação.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceColetoresRequest"
+            example:
+              coletores:
+                - si: 1
+                  dist: 5
+                  v1: 0
+                  v2: 0
+                  v3: 0
+                  v4: 0
+                - si: 2
+                  dist: 10
+                  v1: 25
+                  v2: 25
+                  v3: 25
+                  v4: 25
+      responses:
+        "200":
+          description: Coletores atualizados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvaliacaoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/avaliacoes/{avaliacao_id}/coletores/gerar:
+    parameters:
+      - $ref: "#/components/parameters/AvaliacaoId"
+
+    post:
+      tags: [uniformidade]
+      summary: Gerar coletores automaticamente
+      operationId: gerarColetores
+      description: |
+        Gera coletores com base em `cadastro.raio` e `cadastro.espacamento`.
+
+        Regra: `n = floor(raio / espacamento)`; para cada `i` de 0 a n-1:
+        `si = i + 1`, `dist = (i + 1) * espacamento`, volumes vazios.
+      responses:
+        "200":
+          description: Coletores gerados e avaliação atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GerarColetoresResponse"
+        "400":
+          $ref: "#/components/responses/BusinessRuleError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/avaliacoes/{avaliacao_id}/uniformidade:
+    parameters:
+      - $ref: "#/components/parameters/AvaliacaoId"
+
+    get:
+      tags: [uniformidade]
+      summary: Calcular uniformidade da avaliação
+      operationId: calcularUniformidadeAvaliacao
+      description: |
+        Executa o motor de uniformidade sobre os coletores persistidos na avaliação.
+        Não persiste o resultado — é calculado sob demanda.
+      responses:
+        "200":
+          description: Resultado do cálculo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UniformidadeResponse"
+              example:
+                avaliacao_id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                indicadores:
+                  cuc: 77.48
+                  ud: 66.08
+                  lmp: 5.83
+                  lp25: 3.85
+                  n: 80
+                serie:
+                  - si: 1
+                    dist: 5
+                    li: 0
+                  - si: 2
+                    dist: 10
+                    li: 3.18
+                classificacao:
+                  cuc: Razoável
+                  ud: Razoável
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/calculos/uniformidade:
+    post:
+      tags: [calculos]
+      summary: Calcular uniformidade (stateless)
+      operationId: calcularUniformidadeStateless
+      description: |
+        Calcula uniformidade sem persistir avaliação.
+        Útil para testes de regressão e validação do motor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalculoUniformidadeRequest"
+      responses:
+        "200":
+          description: Resultado do cálculo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UniformidadeCalculoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Chave configurada no servidor via variável `API_KEY`
+
+  parameters:
+    AvaliacaoId:
+      name: avaliacao_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: API key ausente ou inválida
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: AUTHORIZATION
+            detail: API key inválida ou ausente
+
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: NOT_FOUND
+            detail: Avaliação não encontrada
+
+    ValidationError:
+      description: Erro de validação
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: VALIDATION
+            detail: Nenhum coletor com leitura válida para cálculo de uniformidade
+
+    BusinessRuleError:
+      description: Violação de regra de negócio
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            type: BUSINESS_RULE
+            detail: raio e espacamento devem ser informados e espacamento > 0
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    ErrorType:
+      type: string
+      enum:
+        - NOT_FOUND
+        - AUTHORIZATION
+        - VALIDATION
+        - BUSINESS_RULE
+        - INTERNAL
+
+    ErrorResponse:
+      type: object
+      required: [type, detail]
+      properties:
+        type:
+          $ref: "#/components/schemas/ErrorType"
+        detail:
+          type: string
+
+    CanhaoOpcao:
+      type: string
+      enum: [Sim, Não]
+
+    AvaliacaoStatus:
+      type: string
+      enum: [rascunho, concluida]
+
+    CadastroPivo:
+      type: object
+      properties:
+        empresa:
+          type: string
+          maxLength: 200
+        proprietario:
+          type: string
+          maxLength: 200
+        fazenda:
+          type: string
+          maxLength: 200
+        cidade:
+          type: string
+          maxLength: 100
+        estado:
+          type: string
+          maxLength: 2
+          description: Sigla da UF
+        coordenadas:
+          type: string
+          maxLength: 100
+          description: Texto livre; normalizado para coordenada_key
+          example: "-10.5432, -46.4123"
+        comp:
+          type: number
+          minimum: 0
+          description: Comprimento à última torre (m)
+        raio:
+          type: number
+          minimum: 0
+          description: Raio irrigado (m)
+        espacamento:
+          type: number
+          exclusiveMinimum: 0
+          description: Espaçamento entre coletores (m)
+        vazao:
+          type: number
+          minimum: 0
+          description: Vazão lida (m³/h)
+        vel:
+          type: number
+          exclusiveMinimum: 0
+          description: Velocidade da última torre (m/h)
+        pressao:
+          type: number
+          minimum: 0
+          description: Pressão de trabalho (kgf/cm²)
+        lamina_projeto:
+          type: number
+          minimum: 0
+          description: Lâmina de projeto (mm)
+        canhao:
+          $ref: "#/components/schemas/CanhaoOpcao"
+
+    ColetorInput:
+      type: object
+      required: [si]
+      properties:
+        si:
+          type: integer
+          minimum: 1
+          description: Identificador / peso radial
+        dist:
+          type: number
+          minimum: 0
+          description: Distância do centro (m)
+        v1:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Volume leitura 1 (ml)
+        v2:
+          type: number
+          minimum: 0
+          nullable: true
+        v3:
+          type: number
+          minimum: 0
+          nullable: true
+        v4:
+          type: number
+          minimum: 0
+          nullable: true
+
+    Coletor:
+      allOf:
+        - $ref: "#/components/schemas/ColetorInput"
+
+    CreateAvaliacaoRequest:
+      type: object
+      required: [cadastro]
+      properties:
+        cadastro:
+          $ref: "#/components/schemas/CadastroPivo"
+        coletores:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColetorInput"
+          default: []
+
+    PatchAvaliacaoRequest:
+      type: object
+      properties:
+        cadastro:
+          $ref: "#/components/schemas/CadastroPivo"
+        status:
+          $ref: "#/components/schemas/AvaliacaoStatus"
+      minProperties: 1
+
+    ReplaceColetoresRequest:
+      type: object
+      required: [coletores]
+      properties:
+        coletores:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ColetorInput"
+
+    AvaliacaoResponse:
+      type: object
+      required:
+        - id
+        - cadastro
+        - coletores
+        - status
+        - coordenada_key
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        cadastro:
+          $ref: "#/components/schemas/CadastroPivo"
+        coletores:
+          type: array
+          items:
+            $ref: "#/components/schemas/Coletor"
+        status:
+          $ref: "#/components/schemas/AvaliacaoStatus"
+        coordenada_key:
+          type: string
+          description: Chave normalizada derivada de coordenadas
+          example: "-10.5432,-46.4123"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AvaliacaoListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvaliacaoResponse"
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    GerarColetoresResponse:
+      type: object
+      required: [avaliacao, quantidade_gerada]
+      properties:
+        avaliacao:
+          $ref: "#/components/schemas/AvaliacaoResponse"
+        quantidade_gerada:
+          type: integer
+          minimum: 0
+          description: Número de coletores criados (floor(raio/espacamento))
+
+    IndicadoresUniformidade:
+      type: object
+      required: [cuc, ud, lmp, lp25, n]
+      properties:
+        cuc:
+          type: number
+          description: Coeficiente de uniformidade de Christiansen (%)
+        ud:
+          type: number
+          description: Uniformidade de distribuição (%)
+        lmp:
+          type: number
+          description: Lâmina média ponderada (mm)
+        lp25:
+          type: number
+          description: Média do quartil inferior de lâminas (mm)
+        n:
+          type: integer
+          minimum: 0
+          description: Coletores válidos no cálculo
+
+    SerieUniformidadeItem:
+      type: object
+      required: [si, li]
+      properties:
+        si:
+          type: integer
+        dist:
+          type: number
+          nullable: true
+        li:
+          type: number
+          description: Lâmina calculada (mm)
+
+    ClassificacaoUniformidade:
+      type: object
+      properties:
+        cuc:
+          type: string
+          enum: [Excelente, Bom, Razoável, Baixo]
+        ud:
+          type: string
+          enum: [Excelente, Bom, Razoável, Baixo]
+
+    UniformidadeResponse:
+      type: object
+      required: [avaliacao_id, indicadores, serie]
+      properties:
+        avaliacao_id:
+          type: string
+          format: uuid
+        indicadores:
+          $ref: "#/components/schemas/IndicadoresUniformidade"
+        serie:
+          type: array
+          items:
+            $ref: "#/components/schemas/SerieUniformidadeItem"
+        classificacao:
+          $ref: "#/components/schemas/ClassificacaoUniformidade"
+
+    CalculoUniformidadeRequest:
+      type: object
+      required: [coletores]
+      properties:
+        coletores:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ColetorInput"
+
+    UniformidadeCalculoResponse:
+      type: object
+      required: [indicadores, serie]
+      properties:
+        indicadores:
+          $ref: "#/components/schemas/IndicadoresUniformidade"
+        serie:
+          type: array
+          items:
+            $ref: "#/components/schemas/SerieUniformidadeItem"
+        classificacao:
+          $ref: "#/components/schemas/ClassificacaoUniformidade"
+
+security:
+  - ApiKeyAuth: []
