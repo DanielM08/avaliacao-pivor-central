@@ -444,7 +444,7 @@ function Adeq({ adeq, lproj }) {
         <Big t="≥ projeto" v={adeq.adq} faixa={["adequada", C.primary]} suf />
         <Big t="< projeto" v={adeq.adq == null ? null : +(100 - adeq.adq).toFixed(1)} faixa={["déficit", C.warn]} suf />
       </div>
-      <Chart titulo="Curva de adequabilidade">
+      <Chart titulo="Curva de adequabilidade" footer={<AdeqAreaLegend />}>
         <ComposedChart data={adeq.curva} margin={{ top: 8, right: 12, bottom: 16, left: -6 }}>
           <CartesianGrid stroke="#EEE9DC" /><XAxis type="number" dataKey="freq" domain={[0, 100]} tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip labelFormatter={(l) => `${l}% da área`} /><Legend wrapperStyle={{ fontSize: 10 }} />
           {cruz && <ReferenceArea x1={0} x2={cruz.freq} fill={C.primary} fillOpacity={0.1} label={{ value: `≥ projeto ${adeq.adq}%`, fontSize: 9, fill: C.primary, position: "insideTop" }} />}
@@ -531,8 +531,9 @@ function Relatorio({ cad, logo, unif, hidro, adeq, ctrl, epa, hist, salvar, msg,
     @page { @top-right { content: counter(page); font-family:Arial,Helvetica,sans-serif; font-size:10pt; } }
     * { box-sizing: border-box; }
     body { font-family:Arial, Helvetica, sans-serif; font-size:12pt; color:#000; line-height:1.5; text-align:justify; margin:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    h1 { font-size:14pt; font-weight:bold; color:#003366; text-transform:uppercase; margin:18pt 0 12pt; page-break-before:always; }
+    h1 { font-size:14pt; font-weight:bold; color:#003366; text-transform:uppercase; margin:18pt 0 12pt; page-break-before:auto; }
     h1.nobreak { page-break-before:avoid; }
+    h1#k_sum, h1#k_anexo { page-break-before:always; }
     h2 { font-size:12pt; font-weight:bold; color:#003366; margin:14pt 0 8pt; }
     p { text-indent:1.25cm; margin:0 0 8pt; }
     p.flush { text-indent:0; }
@@ -570,8 +571,8 @@ function Relatorio({ cad, logo, unif, hidro, adeq, ctrl, epa, hist, salvar, msg,
     .rh .org img, .rf .org img { height:11px; width:auto; }
     .bar { background:#003366; color:#fff; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; font-weight:bold; font-family:Arial; }
     .bar button { background:#fff; color:#003366; border:none; border-radius:6px; padding:8px 14px; font-weight:bold; cursor:pointer; }
-    @media screen { body{ background:#e7e7e7; } .sheet{ background:#fff; width:210mm; margin:0 auto; padding:3cm 2cm 2cm 3cm; } h1{ page-break-before:auto; } }
-    @media print { .bar{ display:none; } }
+    @media screen { body{ background:#e7e7e7; } .sheet{ background:#fff; width:210mm; margin:0 auto; padding:3cm 2cm 2cm 3cm; } }
+    @media print { .bar{ display:none; } h1{ page-break-before:auto; } h1.nobreak{ page-break-before:avoid; } h1#k_sum, h1#k_anexo{ page-break-before:always; } }
   `;
 
   const docHTML = (autoprint) => {
@@ -606,7 +607,7 @@ function Relatorio({ cad, logo, unif, hidro, adeq, ctrl, epa, hist, salvar, msg,
     const t4 = ctrl ? tbl(["Percentímetro (%)", "Velocidade (m/h)", "Tempo/volta (h)", "Lâmina bruta (mm)"],
       ctrl.tabela.map((r) => [r.p, r.vel.toFixed(1), r.tv.toFixed(2), r.lam.toFixed(2)])) : "";
 
-    const figCaps = ["Perfil da lâmina aplicada em função da distância ao centro do pivô.", "Pressão de serviço por posição de bocal.", "Vazão dos aspersores por posição.", "Vazão ajustada após o remanejamento dos bocais.", "Curva de adequabilidade da irrigação."];
+    const figCaps = ["Perfil da lâmina aplicada em função da distância ao centro do pivô.", "Pressão de serviço por posição de bocal.", "Vazão dos aspersores por posição.", "Vazão ajustada após o remanejamento dos bocais.", "Curva de adequabilidade da irrigação. A área sombreada em verde indica a fração da área com lâmina igual ou superior à de projeto; a área em vermelho, a fração com lâmina inferior à de projeto."];
     const figuras = charts.map((svg, i) => `<div class="fig"><p class="figcap">Figura ${i + 1} – ${figCaps[i] || ""}</p>${svg}<p class="figsrc">Fonte: Elaborado pelo autor.</p></div>`).join("");
     const temFotos = fotos && fotos.length > 0;
     const fotosFigs = temFotos ? fotos.map((f, i) => `<div class="fig"><p class="figcap">Figura ${charts.length + i + 1} – Registro fotográfico do ensaio. Data: ${f.date} · Coordenadas: ${cad.coordenadas || "—"}.</p><img class="foto" src="${f.url}" alt="Registro do ensaio"><p class="figsrc">Fonte: Acervo do ensaio.</p></div>`).join("") : "";
@@ -782,20 +783,30 @@ function Relatorio({ cad, logo, unif, hidro, adeq, ctrl, epa, hist, salvar, msg,
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 16 }}>
         {ucd.length > 1 && <Chart titulo="Uniformidade — lâmina × distância" h={300}>
           <ComposedChart data={ucd} margin={{ top: 6, right: 12, bottom: 14, left: -10 }}><CartesianGrid stroke="#EEE9DC" /><XAxis type="number" dataKey="dist" tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip />
-            <Line dataKey="li" name="Lâmina" stroke={C.water} strokeWidth={1.3} dot={{ r: 1.6, fill: C.water, strokeWidth: 0 }} /><ReferenceLine y={+unif.lmp.toFixed(2)} stroke={C.primary} strokeWidth={2} />{lp != null && <ReferenceLine y={lp} stroke={C.soil} strokeDasharray="6 4" strokeWidth={2} />}</ComposedChart></Chart>}
+            <Line dataKey="li" name="Lâmina" stroke={C.water} strokeWidth={1.3} dot={{ r: 1.6, fill: C.water, strokeWidth: 0 }} />
+            <ReferenceLine y={+unif.lmp.toFixed(2)} stroke={C.primary} strokeWidth={2} label={{ value: `Lmp ${unif.lmp.toFixed(1)}`, fontSize: 9, fill: C.primary, position: "insideTopRight" }} />
+            {lp != null && <ReferenceLine y={lp} stroke={C.soil} strokeDasharray="6 4" strokeWidth={2} label={{ value: `proj ${lp}`, fontSize: 9, fill: C.soil, position: "insideBottomRight" }} />}
+          </ComposedChart></Chart>}
         {hcd.length > 1 && <Chart titulo="Pressões por posição" h={300}>
           <ComposedChart data={hcd} margin={{ top: 6, right: 10, bottom: 14, left: -12 }}><CartesianGrid stroke="#EEE9DC" /><XAxis dataKey="pos" tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} domain={[0, "auto"]} /><Tooltip />
             <Line dataKey="pres" name="Pressão" stroke={C.soil} strokeWidth={1.2} dot={{ r: 1.5, fill: C.soil, strokeWidth: 0 }} connectNulls /></ComposedChart></Chart>}
         {hcd.length > 1 && <Chart titulo="Vazão dos aspersores" h={300}>
           <ComposedChart data={hcd} margin={{ top: 6, right: 10, bottom: 14, left: -12 }}><CartesianGrid stroke="#EEE9DC" /><XAxis dataKey="pos" tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip />
-            <Line dataKey="vazao" name="Vazão" stroke={C.water} strokeWidth={1.2} dot={{ r: 1.5, fill: C.water, strokeWidth: 0 }} />{hidro && <ReferenceLine y={+hidro.media.toFixed(2)} stroke={C.primary} strokeDasharray="5 4" />}</ComposedChart></Chart>}
+            <Line dataKey="vazao" name="Vazão" stroke={C.water} strokeWidth={1.2} dot={{ r: 1.5, fill: C.water, strokeWidth: 0 }} />
+            {hidro && <ReferenceLine y={+hidro.media.toFixed(2)} stroke={C.primary} strokeDasharray="5 4" label={{ value: `média ${hidro.media.toFixed(1)}`, fontSize: 9, fill: C.primary, position: "insideTopRight" }} />}
+          </ComposedChart></Chart>}
         {hidro && hidro.ajustado.length > 1 && <Chart titulo="Vazão ajustada (pós-remanejamento)" h={300}>
           <ComposedChart data={hidro.ajustado} margin={{ top: 6, right: 10, bottom: 14, left: -12 }}><CartesianGrid stroke="#EEE9DC" /><XAxis dataKey="novaPos" tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip />
             <Line dataKey="vazao" name="Ajustada" stroke={C.water} strokeWidth={1.3} dot={{ r: 1.5, fill: C.water, strokeWidth: 0 }} /></ComposedChart></Chart>}
-        {adeq && <Chart titulo="Adequabilidade — frações da área" h={300}>
-          <ComposedChart data={adeq.curva} margin={{ top: 6, right: 12, bottom: 14, left: -8 }}><CartesianGrid stroke="#EEE9DC" /><XAxis type="number" dataKey="freq" domain={[0, 100]} tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip labelFormatter={(l) => `${l}%`} />
-            {cruz && <ReferenceArea x1={0} x2={cruz.freq} fill={C.primary} fillOpacity={0.1} />}{cruz && <ReferenceArea x1={cruz.freq} x2={100} fill={C.warn} fillOpacity={0.1} />}
-            <Line dataKey="lamina" name="Lâmina" stroke={C.water} strokeWidth={2} dot={false} />{lp != null && <ReferenceLine y={lp} stroke={C.soil} strokeWidth={2} />}{cruz && <ReferenceDot x={cruz.freq} y={cruz.lamina} r={4} fill={C.soil} stroke="#fff" strokeWidth={2} />}</ComposedChart></Chart>}
+        {adeq && <Chart titulo="Adequabilidade — frações da área" h={300} footer={<AdeqAreaLegend />}>
+          <ComposedChart data={adeq.curva} margin={{ top: 8, right: 12, bottom: 14, left: -8 }}><CartesianGrid stroke="#EEE9DC" /><XAxis type="number" dataKey="freq" domain={[0, 100]} tick={{ fontSize: 9, fill: C.muted }} /><YAxis tick={{ fontSize: 9, fill: C.muted }} /><Tooltip labelFormatter={(l) => `${l}%`} />
+            {cruz && <ReferenceArea x1={0} x2={cruz.freq} fill={C.primary} fillOpacity={0.1} label={{ value: `≥ projeto ${adeq.adq}%`, fontSize: 9, fill: C.primary, position: "insideTop" }} />}
+            {cruz && <ReferenceArea x1={cruz.freq} x2={100} fill={C.warn} fillOpacity={0.1} label={{ value: `< projeto ${(100 - adeq.adq).toFixed(1)}%`, fontSize: 9, fill: C.warn, position: "insideTop" }} />}
+            <Line dataKey="lamina" name="Lâmina" stroke={C.water} strokeWidth={2} dot={false} />
+            <ReferenceLine y={+adeq.lmp.toFixed(2)} stroke={C.primary} strokeDasharray="5 4" label={{ value: `média ${adeq.lmp.toFixed(1)}`, fontSize: 9, fill: C.primary, position: "insideBottomRight" }} />
+            {lp != null && <ReferenceLine y={lp} stroke={C.soil} strokeWidth={2} label={{ value: `projeto ${lp}`, fontSize: 9, fill: C.soil, position: "insideTopLeft" }} />}
+            {cruz && <ReferenceDot x={cruz.freq} y={cruz.lamina} r={4} fill={C.soil} stroke="#fff" strokeWidth={2} />}
+          </ComposedChart></Chart>}
       </div>
 
       {/* Remanejo dos bocais com vazões ajustadas */}
@@ -910,11 +921,26 @@ function Relatorio({ cad, logo, unif, hidro, adeq, ctrl, epa, hist, salvar, msg,
 }
 
 /* ---------- AUXILIARES ---------- */
-function Chart({ titulo, children, h }) {
+function AdeqAreaLegend() {
+  const row = (color, text) => (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 5 }}>
+      <span style={{ width: 12, height: 12, background: color, opacity: 0.35, border: `1px solid ${color}`, flexShrink: 0, marginTop: 2 }} aria-hidden />
+      <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.45 }}>{text}</span>
+    </div>
+  );
+  return (
+    <div style={{ padding: "4px 10px 10px" }}>
+      {row(C.primary, "Área com lâmina igual ou superior à de projeto (adequada).")}
+      {row(C.warn, "Área com lâmina inferior à de projeto (déficit).")}
+    </div>
+  );
+}
+function Chart({ titulo, children, h, footer }) {
   return (
     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: "14px 6px 6px" }}>
       <h3 style={{ fontFamily: "'Archivo',sans-serif", fontSize: 13, margin: "0 0 8px 8px", fontWeight: 700 }}>{titulo}</h3>
       <ResponsiveContainer width="100%" height={h || 220}>{children}</ResponsiveContainer>
+      {footer}
     </div>
   );
 }
