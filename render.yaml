@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: api-pivor-central
+    runtime: docker
+    plan: free
+    dockerfilePath: ./app-api-pivor-central/Dockerfile
+    dockerContext: ./app-api-pivor-central
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        sync: false
